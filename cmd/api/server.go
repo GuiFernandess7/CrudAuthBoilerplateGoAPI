@@ -20,7 +20,7 @@ func main() {
 		panic(err)
 	}
 
-	_, err = sqlconnect.ConnectDB()
+	db, err := sqlconnect.ConnectDB()
 	if err != nil {
 		fmt.Println("Error:----: ", err)
 		return
@@ -50,7 +50,7 @@ func main() {
 	// 	rl.Middleware,
 	// 	mw.Cors,
 	// )
-	secureMux := mw.SecurityHeaders(routes.InitRoutes())
+	secureMux := mw.SecurityHeaders(routes.InitRoutes(db))
 
 	server := &http.Server{
 		Addr: port,

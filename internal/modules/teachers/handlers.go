@@ -7,134 +7,80 @@ import (
 	"strconv"
 	"strings"
 	modules "apiproject02/internal/modules"
-	sqlconnect "apiproject02/internal/repository/sqlconnect"
-	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"errors"
 )
 
-var (
-	teachers 	= make(map[int]Teacher)
-	mutex 		= &sync.Mutex{}
-	nextID 		= 1
-)
+func (h *TeacherHandlers) TeachersHandler(w http.ResponseWriter, r *http.Request) {
 
-func init() {
-	teachers[nextID] = Teacher {
-		ID: nextID,
-		FirstName: "John",
-		LastName: "Cena",
-		Class: "A",
-		Subject: "Fight",
-	}
-	nextID++
-	teachers[nextID] = Teacher {
-		ID: nextID,
-		FirstName: "Jake",
-		LastName: "Peralta",
-		Class: "B",
-		Subject: "Investigation",
-	}
-	nextID++
-	teachers[nextID] = Teacher {
-		ID: nextID,
-		FirstName: "Robert",
-		LastName: "Greene",
-		Class: "B",
-		Subject: "Biology",
-	}
-	nextID++
+    switch r.Method {
+    case http.MethodGet:
+        h.GetTeachers(w, r)
+    case http.MethodPost:
+        h.AddTeacherHandler(w, r)
+    default:
+        http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+    }
 }
 
-
-func TeacherHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		getTeachersHandlers(w, r)
-	case http.MethodPost:
-		createTeacherHandler(w, r)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func getTeachersHandlers(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.Method)
+func (h *TeacherHandlers) GetTeachers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusForbidden)
 		return
 	}
-
 	path := strings.TrimPrefix(r.URL.Path, "/teachers/")
 	idStr := strings.TrimSuffix(path, "/")
-	fmt.Println(idStr)
 
 	if idStr == "" {
-		firstName := r.URL.Query().Get("first_name")
-		lastName := r.URL.Query().Get("last_name")
+		crud := modules.CrudGeneric[Teacher]{DB: h.DB}
+		responseModel, err := crud.ReadAll()
 
-		teacherList := make([]Teacher, 0, len(teachers))
-		for _, teacher := range teachers {
-			if (firstName == "" || teacher.FirstName == firstName) &&
-				(lastName == "" || teacher.LastName == lastName) {
-				teacherList = append(teacherList, teacher)
-			}
+		if err != nil {
+			fmt.Println("Parsing model error:", err)
+			http.Error(w, "", http.StatusInternalServerError)
+   			return
 		}
 
-		response := struct {
-			Status string    `json:"status"`
-			Count  int       `json:"count"`
-			Data   []Teacher `json:"data"`
-		}{
-			Status: "success",
-			Count:  len(teacherList),
-			Data:   teacherList,
-		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-		return
+		json.NewEncoder(w).Encode(responseModel)
 
 	} else {
 		idInt, err := strconv.Atoi(idStr)
+
 		if err != nil {
-			http.Error(w, "Invalid parameter", http.StatusForbidden)
-			return
+		    fmt.Println("Error converting string ID to integer:", err)
+		    return
+		}
+		crud := modules.CrudGeneric[Teacher]{DB: h.DB}
+		responseModel, err := crud.Read(uint(idInt))
+
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+		        http.Error(w, "Record not found", http.StatusNotFound)
+		        return
+		    }
+
+		    fmt.Println("Database error:", err)
+		    http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		    return
 		}
 
-		teacher, exists := teachers[idInt]
-		if !exists {
-			http.Error(w, "Teacher not found", http.StatusNotFound)
-			return
-		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(teacher)
-		return
+		json.NewEncoder(w).Encode(responseModel)
 	}
 }
 
-func createTeacherHandler(w http.ResponseWriter, r *http.Request) {
-	db, err := sqlconnect.ConnectDB()
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-	}
-
-	gormDB, err := gorm.Open(mysql.New(mysql.Config{
-	    Conn: db,
-	}), &gorm.Config{})
-
-	if err != nil {
-	    panic("failed to initialize gorm DB")
-	}
-
-	defer db.Close()
-	var newTeachers []Teacher
-	err = json.NewDecoder(r.Body).Decode(&newTeachers)
+func (h *TeacherHandlers) AddTeacherHandler(w http.ResponseWriter, r *http.Request) {
+	var responseModel []Teacher
+	err := json.NewDecoder(r.Body).Decode(&responseModel)
 	if err != nil {
 		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
 		return
 	}
 
-	crud := modules.CrudMaker[Teacher]{DB: db}
-	for _, teacher := range newTeachers {
-		err := crud.Create(teacher)
+	crud := modules.CrudGeneric[Teacher]{DB: h.DB}
+	for i := range responseModel {
+		err := crud.Create(&responseModel[i])
 		if err != nil {
 			http.Error(w, "Error inserting data into database", http.StatusBadRequest)
 		}
@@ -142,5 +88,5 @@ func createTeacherHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(responseModel)
 }
