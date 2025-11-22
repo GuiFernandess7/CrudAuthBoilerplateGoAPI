@@ -90,3 +90,9 @@ func (h *TeacherHandlers) AddTeacherHandler(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(responseModel)
 }
+
+
+// func (h *TeacherHandlers) UpdateTeacherHandler(w http.ResponseWriter, r *http.Request){
+// 	crud := modules.CrudGeneric[Teacher]{DB: h.DB}
+// 	crud.Update(1, &updatedTeacher)
+// }
